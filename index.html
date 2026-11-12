@@ -180,6 +180,20 @@ td.neg { background: var(--neg-soft); font-weight: 600; } td.mut { color: var(--
 .meter .fill { height: 100%; border-radius: 99px; transition: width 0.25s; }
 .meter .fill.d { background: var(--dj); } .meter .fill.b { background: var(--bf); }
 .meter .num { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.qtext { margin: 0; } .qtext.qok b, .qtext.qbad b { color: var(--ink); }
+.qtext.qok { color: var(--dj); } .qtext.qbad { color: var(--neg); }
+.qopts { display: flex; flex-wrap: wrap; gap: 8px; }
+.qopt { font-weight: 600; } .qopt .mono { font-family: var(--font-mono); color: var(--muted); font-weight: 400; }
+.qopt:disabled { cursor: default; opacity: 0.75; }
+.qopt.ok { background: var(--conf-soft); border-color: var(--conf); opacity: 1; }
+.qopt.bad { background: var(--neg-soft); border-color: var(--neg); opacity: 1; }
+.labbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.labbar input[type="number"] { width: 92px; font-family: var(--font-mono); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2); padding: 5px 8px; color: var(--ink); }
+#labTable th { line-height: 1.25; } #labTable td { font-variant-numeric: tabular-nums; }
+.lnum { min-width: 86px; } .mut { color: var(--muted); }
+.lbar { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-top: 3px; }
+.lbar i { display: block; height: 100%; border-radius: 99px; } .lbar i.d { background: var(--dj); } .lbar i.b { background: var(--bf); }
 td.ok { color: var(--dj); font-weight: 600; } td.bad { background: var(--neg-soft); color: var(--neg); font-weight: 600; }
 .edges td input { width: 70px; text-align: center; font-family: var(--font-mono); border: 1px solid var(--line); border-radius: 6px;
   background: var(--surface-2); padding: 2px 4px; color: var(--ink); }
@@ -285,6 +299,26 @@ td.ok { color: var(--dj); font-weight: 600; } td.bad { background: var(--neg-sof
       <p class="note">가중치를 바꾸거나 순서를 옮기면 두 알고리즘을 처음부터 다시 실행합니다.</p>
       <div class="tablewrap"><table id="edgeTable"></table></div>
       <div><button type="button" class="btn" id="restore">예제 값으로 되돌리기</button></div>
+    </div>
+    <div class="card" id="quiz">
+      <h3>직접 맞혀 보기 · Dijkstra의 다음 선택</h3>
+      <div id="quizBox"></div>
+    </div>
+    <div class="card" id="lab">
+      <h3>실험 · 그래프가 커지면 누가 더 많이 일할까</h3>
+      <p class="note">크기마다 무작위 그래프 20개(가중치 1~20, 간선 순서도 무작위)를 만들어 두 알고리즘을 실제로 돌리고, 단위 연산 횟수의 평균을 냅니다. 시드가 같으면 항상 같은 그래프가 나옵니다.</p>
+      <div class="labbar">
+        <label class="field">간선 수
+          <select id="labDensity">
+            <option value="sparse">적음 (m = 3n)</option>
+            <option value="dense">많음 (m = n(n − 1))</option>
+          </select>
+        </label>
+        <label class="field">시드 <input type="number" id="labSeed" value="2026" min="1" max="999999" step="1"></label>
+        <button type="button" class="btn" id="labRandom">다른 그래프로</button>
+      </div>
+      <div class="tablewrap"><table id="labTable"></table></div>
+      <p class="note" id="labNote"></p>
     </div>
   </section>
 
@@ -531,6 +565,99 @@ if (typeof module !== "undefined") module.exports = SP;
 
 </script>
 <script>
+// 무작위 그래프 실험: 그래프가 커질 때 두 알고리즘의 단위 연산 횟수를 센다.
+// 같은 시드면 항상 같은 그래프가 만들어지므로, 보고서의 표를 웹에서 그대로 재현할 수 있다.
+const SPX = (() => {
+  const INF = Infinity;
+  function rng(seed) { // mulberry32
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuffle(arr, rnd) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+  // 정점 n개, 간선 m개. v1에서 모든 정점에 갈 수 있고, 가중치는 1~20, 간선 순서는 무작위.
+  function randomGraph(n, m, rnd) {
+    const order = [1].concat(shuffle(Array.from({ length: n - 1 }, (_, i) => i + 2), rnd));
+    const used = new Set(), edges = [];
+    const add = (u, v) => { used.add(u * 1000 + v); edges.push([u, v, 1 + Math.floor(rnd() * 20)]); };
+    for (let k = 1; k < n; k++) add(order[Math.floor(rnd() * k)], order[k]); // v1에서 뻗는 트리
+    const rest = [];
+    for (let u = 1; u <= n; u++) for (let v = 1; v <= n; v++) if (u !== v && !used.has(u * 1000 + v)) rest.push([u, v]);
+    shuffle(rest, rnd);
+    for (let i = 0; edges.length < m && i < rest.length; i++) add(rest[i][0], rest[i][1]);
+    return shuffle(edges, rnd);
+  }
+  // 슬라이드의 배열 버전 Dijkstra. 비교 횟수를 실제로 센다.
+  function dijkstraCount(n, edges) {
+    const W = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(INF));
+    for (const [u, v, w] of edges) W[u][v] = w;
+    const length = new Array(n + 1).fill(INF), inY = new Array(n + 1).fill(false), dist = new Array(n + 1).fill(INF);
+    dist[1] = 0; inY[1] = true;
+    for (let i = 2; i <= n; i++) length[i] = W[1][i];
+    let comps = 0;
+    for (let t = 1; t <= n - 1; t++) {
+      let min = INF, vnear = -1;
+      for (let i = 2; i <= n; i++) { comps++; if (!inY[i] && length[i] <= min) { min = length[i]; vnear = i; } }
+      inY[vnear] = true; dist[vnear] = length[vnear];
+      for (let i = 2; i <= n; i++) { comps++; if (!inY[i] && length[vnear] + W[vnear][i] < length[i]) length[i] = length[vnear] + W[vnear][i]; }
+    }
+    return { dist, comps };
+  }
+  // Bellman-Ford. early = true이면 값이 하나도 안 바뀐 라운드에서 바로 끝낸다.
+  function bellmanFordCount(n, edges, early) {
+    const length = new Array(n + 1).fill(INF);
+    length[1] = 0;
+    let checks = 0, lastChange = 0, stopped = false;
+    for (let k = 1; k <= n - 1; k++) {
+      let changed = false;
+      for (const [u, v, w] of edges) {
+        checks++;
+        if (length[u] !== INF && length[u] + w < length[v]) { length[v] = length[u] + w; changed = true; }
+      }
+      if (changed) lastChange = k;
+      else if (early) { stopped = true; break; }
+    }
+    if (!stopped) checks += edges.length; // 음수 사이클 검사
+    return { dist: length, checks, lastChange };
+  }
+  const SIZES = [5, 10, 20, 40, 80];
+  const edgeCount = (n, density) => (density === "dense" ? n * (n - 1) : 3 * n);
+  function run(seed, density, trials) {
+    const rnd = rng(seed), rows = [];
+    let agree = 0, total = 0;
+    for (const n of SIZES) {
+      const m = edgeCount(n, density);
+      let dj = 0, full = 0, early = 0, rounds = 0, maxRounds = 0;
+      for (let t = 0; t < trials; t++) {
+        const g = randomGraph(n, m, rnd);
+        const a = dijkstraCount(n, g), b = bellmanFordCount(n, g, false), c = bellmanFordCount(n, g, true);
+        dj += a.comps; full += b.checks; early += c.checks; rounds += c.lastChange;
+        maxRounds = Math.max(maxRounds, c.lastChange);
+        total++;
+        let same = true;
+        for (let v = 1; v <= n; v++) if (a.dist[v] !== b.dist[v] || a.dist[v] !== c.dist[v]) same = false;
+        if (same) agree++;
+      }
+      rows.push({ n, m, dj: dj / trials, full: full / trials, early: early / trials, rounds: rounds / trials, maxRounds });
+    }
+    return { seed, density, trials, rows, agree, total };
+  }
+  return { run, rng, randomGraph, dijkstraCount, bellmanFordCount, SIZES };
+})();
+
+
+</script>
+<script>
 (() => {
   const { INF, fmt } = SP;
   const SCEN = {
@@ -580,8 +707,92 @@ if (typeof module !== "undefined") module.exports = SP;
     S.dj.i = Math.min(S.dj.i, S.dj.run.steps.length - 1);
     S.bf.i = Math.min(S.bf.i, S.bf.run.steps.length - 1);
     stop("dj"); stop("bf");
+    resetQuiz();
     renderAll();
   }
+
+  // ───────── 직접 맞혀 보기 ─────────
+  const Q = { list: [], k: 0, picked: null, score: 0 };
+  function resetQuiz() {
+    Q.list = [];
+    S.dj.run.steps.forEach((st, i) => { if (st.phase === "select") Q.list.push(i); });
+    Q.k = 0; Q.picked = null; Q.score = 0;
+    renderQuiz();
+  }
+  function renderQuiz() {
+    const box = $("quizBox"), steps = S.dj.run.steps, n = SCEN[S.sc].n;
+    if (Q.k >= Q.list.length) {
+      box.innerHTML = `<p class="qtext"><b>${Q.list.length}문제 중 ${Q.score}문제</b>를 맞혔습니다. Dijkstra는 매번 Y 밖에서 length가 가장 작은 정점을 고릅니다.` +
+        (S.sc === "negative" ? " 이 그래프처럼 음수 간선이 있으면 그 선택이 틀릴 수 있습니다." : "") +
+        `</p><div><button type="button" class="btn" data-q="again">다시 풀기</button></div>`;
+      return;
+    }
+    const i = Q.list[Q.k], st = steps[i], prev = steps[i - 1];
+    const opts = [];
+    for (let v = 2; v <= n; v++) if (!prev.inY[v]) opts.push(v);
+    const best = Math.min(...opts.map((v) => prev.length[v]));
+    let h = `<p class="qtext"><b>문제 ${Q.k + 1} / ${Q.list.length}</b> · 지금 Y 밖 정점의 length는 아래와 같습니다. Dijkstra가 다음에 확정할 정점은?</p><div class="qopts">`;
+    for (const v of opts) {
+      let c = "";
+      if (Q.picked !== null) c = v === st.vnear ? " ok" : v === Q.picked ? " bad" : "";
+      h += `<button type="button" class="btn qopt${c}" data-q="pick" data-v="${v}" ${Q.picked !== null ? "disabled" : ""}>v${v} <span class="mono">${fmt(prev.length[v])}</span></button>`;
+    }
+    h += "</div>";
+    if (Q.picked !== null) {
+      const right = prev.length[Q.picked] === best;
+      h += `<p class="qtext ${right ? "qok" : "qbad"}">${right ? "맞았습니다." : "아쉽습니다."} Y 밖에서 length가 가장 작은 정점은 <b>v${st.vnear} (${fmt(best)})</b>입니다. 위 Dijkstra 화면이 이 단계로 이동했습니다.</p>` +
+        `<div><button type="button" class="btn primary" data-q="next">${Q.k + 1 < Q.list.length ? "다음 문제" : "결과 보기"}</button></div>`;
+    }
+    box.innerHTML = h;
+  }
+  $("quizBox").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-q]");
+    if (!b) return;
+    const a = b.dataset.q;
+    if (a === "again") { resetQuiz(); stop("dj"); S.dj.i = 0; renderAll(); return; }
+    if (a === "pick") {
+      const i = Q.list[Q.k], prev = S.dj.run.steps[i - 1], n = SCEN[S.sc].n;
+      Q.picked = +b.dataset.v;
+      let best = INF;
+      for (let v = 2; v <= n; v++) if (!prev.inY[v]) best = Math.min(best, prev.length[v]);
+      if (prev.length[Q.picked] === best) Q.score++;
+      stop("dj"); S.dj.i = i; renderAll(); renderQuiz();
+      return;
+    }
+    if (a === "next") {
+      Q.k++; Q.picked = null;
+      if (Q.k < Q.list.length) { stop("dj"); S.dj.i = Q.list[Q.k] - 1; renderAll(); }
+      renderQuiz();
+    }
+  });
+
+  // ───────── 실험 ─────────
+  const num = (x) => (Math.round(x * 10) / 10).toLocaleString("ko-KR");
+  function renderLab() {
+    let seed = Math.round(Number($("labSeed").value));
+    if (!Number.isFinite(seed) || seed < 1) seed = 2026;
+    seed = Math.min(seed, 999999);
+    $("labSeed").value = seed;
+    const density = $("labDensity").value;
+    const r = SPX.run(seed, density, 20);
+    const top = Math.max(...r.rows.map((x) => Math.max(x.dj, x.early)));
+    let h = "<tr><th>n</th><th>m</th><th>Dijkstra 비교</th><th>Bellman-Ford 검사<br>(조기 종료)</th><th>값이 바뀐<br>마지막 라운드</th><th>Bellman-Ford 검사<br>(끝까지, nm)</th></tr>";
+    for (const x of r.rows) {
+      const bar = (v, cls) => `<div class="lbar"><i class="${cls}" style="width:${Math.max(1.5, 100 * v / top).toFixed(1)}%"></i></div>`;
+      h += `<tr><td>${x.n}</td><td>${x.m.toLocaleString("ko-KR")}</td>` +
+        `<td class="lnum">${num(x.dj)}${bar(x.dj, "d")}</td><td class="lnum">${num(x.early)}${bar(x.early, "b")}</td>` +
+        `<td>평균 ${x.rounds.toFixed(1)} · 최대 ${x.maxRounds}<br><span class="mut">(n − 1 = ${x.n - 1})</span></td><td>${num(x.full)}</td></tr>`;
+    }
+    $("labTable").innerHTML = h;
+    const last = r.rows[r.rows.length - 1];
+    const msg = density === "sparse"
+      ? `간선이 적으면 배열 Dijkstra는 간선 수와 상관없이 2(n − 1)²번을 비교하므로, n = ${last.n}에서 조기 종료를 쓴 Bellman-Ford(${num(last.early)}번)보다 오히려 많이(${num(last.dj)}번) 일합니다. 간선 순서가 무작위이면 값이 평균 ${last.rounds.toFixed(1)}라운드 만에 다 정해지기 때문입니다.`
+      : `간선이 많으면 한 라운드에 간선 ${last.m.toLocaleString("ko-KR")}개를 모두 봐야 해서, n = ${last.n}에서 Bellman-Ford는 조기 종료를 써도 ${num(last.early)}번으로 Dijkstra(${num(last.dj)}번)보다 많이 일합니다. 끝까지 돌리면 ${num(last.full)}번입니다.`;
+    $("labNote").innerHTML = `<b>두 알고리즘의 최단거리가 ${r.total}개 그래프 중 ${r.agree}개에서 같았습니다.</b> ${msg} 단, 최악의 경우는 여전히 Θ(nm)이고, 두 알고리즘의 단위 연산(비교와 완화 검사)은 서로 다른 연산입니다.`;
+  }
+  $("labDensity").addEventListener("change", renderLab);
+  $("labSeed").addEventListener("change", renderLab);
+  $("labRandom").addEventListener("click", () => { $("labSeed").value = 1 + Math.floor(Math.random() * 999999); renderLab(); });
 
   // ───────── 그래프 그리기 ─────────
   const ARROWS = ["def", "tree", "cand", "upd", "scan", "block", "neg", "faded"];
@@ -949,6 +1160,7 @@ if (typeof module !== "undefined") module.exports = SP;
   };
   const h0 = location.hash.slice(1);
   loadScenario(SCEN[h0] ? h0 : "basic", true);
+  renderLab();
 })();
 </script>
 
