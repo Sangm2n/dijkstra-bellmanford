@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; } img { max-width: 100%; } [hidden] { display: none !important; }
+</style>
+<title>Dijkstra vs Bellman-Ford</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="같은 그래프에서 Dijkstra(탐욕)와 Bellman-Ford(동적계획)를 한 단계씩 실행해 비교하는 시각화">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 실험대 — 위쪽 조작 막대, 두 알고리즘 패널을 나란히(좁은 화면은 위아래), 아래에 결과 비교와 간선 목록 */
+:root {
+  --bg: #f3f5f9; --surface: #ffffff; --surface-2: #f7f8fb; --ink: #151c2c; --muted: #586276; --line: #d8dde7;
+  --dj: #15803d; --dj-soft: #e2f5e8; --bf: #c2410c; --bf-soft: #fcebdf;
+  --tree: #1d4ed8; --cand: #7ba6f2; --upd: #ea580c; --scan: #7c3aed; --neg: #dc2626;
+  --edge: #a1abbe; --edge-faint: #d6dbe5;
+  --node: #ffffff; --node-ink: #151c2c; --on-strong: #ffffff;
+  --conf: #16a34a; --cur: #ea580c; --src: #0f766e;
+  --badge: #eef1f6; --badge-ink: #263044; --hi: #fde68a; --hi-ink: #7a3e06; --hi-line: #ea580c;
+  --scan-soft: #ede9fe; --neg-soft: #fee2e2; --conf-soft: #dcfce7; --cur-soft: #ffedd5; --upd-soft: #fef3c7;
+  --focus: #2563eb;
+  --font-ui: "IBM Plex Sans KR", "Noto Sans KR", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Nanum Gothic Coding", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131c; --surface: #151b27; --surface-2: #1a2130; --ink: #e6eaf2; --muted: #9aa4b8; --line: #2a3346;
+    --dj: #4ade80; --dj-soft: #11301d; --bf: #fb923c; --bf-soft: #33200f;
+    --tree: #6ea6ff; --cand: #4d6fa6; --upd: #fb923c; --scan: #a78bfa; --neg: #f87171;
+    --edge: #5e6a80; --edge-faint: #2c3546;
+    --node: #151b27; --node-ink: #e6eaf2; --on-strong: #0b111c;
+    --conf: #22c55e; --cur: #fb923c; --src: #2dd4bf;
+    --badge: #212a3a; --badge-ink: #d5dbe6; --hi: #4a3a0c; --hi-ink: #fde68a; --hi-line: #fb923c;
+    --scan-soft: #2a2145; --neg-soft: #3a1818; --conf-soft: #10301c; --cur-soft: #3a220f; --upd-soft: #3a300d;
+    --focus: #93c5fd; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131c; --surface: #151b27; --surface-2: #1a2130; --ink: #e6eaf2; --muted: #9aa4b8; --line: #2a3346;
+  --dj: #4ade80; --dj-soft: #11301d; --bf: #fb923c; --bf-soft: #33200f;
+  --tree: #6ea6ff; --cand: #4d6fa6; --upd: #fb923c; --scan: #a78bfa; --neg: #f87171;
+  --edge: #5e6a80; --edge-faint: #2c3546;
+  --node: #151b27; --node-ink: #e6eaf2; --on-strong: #0b111c;
+  --conf: #22c55e; --cur: #fb923c; --src: #2dd4bf;
+  --badge: #212a3a; --badge-ink: #d5dbe6; --hi: #4a3a0c; --hi-ink: #fde68a; --hi-line: #fb923c;
+  --scan-soft: #2a2145; --neg-soft: #3a1818; --conf-soft: #10301c; --cur-soft: #3a220f; --upd-soft: #3a300d;
+  --focus: #93c5fd; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.6;
+  word-break: keep-all; overflow-wrap: anywhere; }
+.app { max-width: 1320px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+
+/* 상단 */
+.top { display: grid; gap: 12px; }
+.brand h1 { font-size: clamp(1.45rem, 2.6vw, 2rem); letter-spacing: -0.01em; line-height: 1.2; }
+.brand h1 .vs { color: var(--muted); font-weight: 400; margin: 0 0.25em; }
+.brand h1 .d { color: var(--dj); } .brand h1 .b { color: var(--bf); }
+.brand p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); font-weight: 600; }
+.field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.9rem; }
+.field select { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; color: var(--ink); }
+.field input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--bf); }
+.bar .spacer { flex: 1 1 auto; }
+.btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: 6px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+.note { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.note b { color: var(--ink); }
+
+/* 패널 */
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 540px), 1fr)); gap: 16px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.phead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.tag { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; border-radius: 6px; padding: 2px 8px; }
+.dj .tag { background: var(--dj-soft); color: var(--dj); } .bf .tag { background: var(--bf-soft); color: var(--bf); }
+.phead h2 { font-size: 1.08rem; font-weight: 700; }
+.counter { margin-left: auto; font-family: var(--font-mono); font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.graph { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.graph svg { display: block; width: 100%; height: auto; }
+
+/* SVG */
+.e path { fill: none; stroke: var(--edge); stroke-width: 1.7; }
+.e.tree path { stroke: var(--tree); stroke-width: 3; }
+.e.cand path { stroke: var(--cand); stroke-width: 2.3; stroke-dasharray: 6 4; }
+.e.upd path { stroke: var(--upd); stroke-width: 3.8; }
+.e.scan path { stroke: var(--scan); stroke-width: 3.8; stroke-dasharray: 6 3.5; }
+.e.block path { stroke: var(--neg); stroke-width: 3; stroke-dasharray: 4 3; }
+.e.neg path { stroke: var(--neg); stroke-width: 3.8; }
+.e.faded path { stroke: var(--edge-faint); }
+.e .lbl rect { fill: var(--surface-2); }
+.e .lbl text { font-family: var(--font-mono); font-size: 13px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.e .lbl text .wv { fill: var(--ink); font-weight: 600; }
+.e .lbl text .wv.negw { fill: var(--neg); }
+.e .lbl text .eid { font-size: 11px; fill: var(--muted); }
+.e.upd .lbl text .wv { fill: var(--upd); } .e.scan .lbl text .wv, .e.scan .lbl text .eid { fill: var(--scan); font-weight: 600; }
+.e.block .lbl text .wv, .e.neg .lbl text .wv { fill: var(--neg); }
+.ah path { stroke: none; }
+.ah.def path { fill: var(--edge); } .ah.tree path { fill: var(--tree); } .ah.cand path { fill: var(--cand); }
+.ah.upd path { fill: var(--upd); } .ah.scan path { fill: var(--scan); } .ah.block path, .ah.neg path { fill: var(--neg); }
+.ah.faded path { fill: var(--edge-faint); }
+.n circle { fill: var(--node); stroke: var(--node-ink); stroke-width: 2.2; }
+.n text { font-family: var(--font-ui); font-weight: 700; font-size: 15px; fill: var(--node-ink); }
+.n.conf circle { fill: var(--conf); stroke: var(--conf); } .n.conf text { fill: var(--on-strong); }
+.n.cur circle { fill: var(--cur); stroke: var(--cur); } .n.cur text { fill: var(--on-strong); }
+.n.src circle { fill: var(--src); stroke: var(--src); } .n.src text { fill: var(--on-strong); }
+.n.upd circle { fill: var(--cur-soft); stroke: var(--cur); }
+.n.neg circle { fill: var(--neg-soft); stroke: var(--neg); }
+.bdg rect { fill: var(--badge); stroke: var(--line); }
+.bdg text { font-family: var(--font-mono); font-size: 13px; fill: var(--badge-ink); font-variant-numeric: tabular-nums; }
+.bdg.hi rect { fill: var(--hi); stroke: var(--hi-line); } .bdg.hi text { fill: var(--hi-ink); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) { .bdg.hi { animation: pop 0.35s ease-out; transform-box: fill-box; transform-origin: center; } }
+@keyframes pop { from { transform: scale(0.82); } to { transform: scale(1); } }
+
+/* 진행 칩 */
+.strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 30px; }
+.strip .lab { font-size: 0.8rem; color: var(--muted); margin-right: 2px; }
+.chip { font-family: var(--font-mono); font-size: 0.8rem; border-radius: 7px; padding: 2px 7px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip.conf { background: var(--conf-soft); border-color: var(--conf); color: var(--ink); }
+.chip.cur { background: var(--cur-soft); border-color: var(--cur); color: var(--ink); font-weight: 600; }
+.chip.upd { background: var(--upd-soft); border-color: var(--upd); color: var(--ink); }
+.chip.same { color: var(--ink); }
+.chip.skip { opacity: 0.55; text-decoration: line-through; }
+.chip.now { outline: 2px solid var(--scan); outline-offset: 1px; color: var(--ink); font-weight: 600; }
+.chip.negc { background: var(--neg-soft); border-color: var(--neg); color: var(--ink); font-weight: 600; }
+.arrow { color: var(--muted); font-size: 0.8rem; }
+
+/* 표 */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { border: 1px solid var(--line); padding: 4px 6px; text-align: center; font-size: 0.86rem; white-space: nowrap; }
+th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+td { font-family: var(--font-mono); }
+td.conf { background: var(--conf-soft); font-weight: 600; } td.cur { background: var(--cur-soft); font-weight: 600; }
+td.upd { background: var(--upd-soft); font-weight: 600; } td.scan { background: var(--scan-soft); font-weight: 600; }
+td.neg { background: var(--neg-soft); font-weight: 600; } td.mut { color: var(--muted); }
+.rounds h3, .card h3 { font-size: 0.92rem; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+
+/* 설명 */
+.explain { display: grid; gap: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-height: 120px; }
+.explain p { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.pill { font-size: 0.74rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; margin-top: 2px; white-space: nowrap; }
+.pill.what { background: color-mix(in srgb, var(--tree) 14%, transparent); color: var(--tree); }
+.pill.why { background: var(--upd-soft); color: var(--hi-ink); }
+
+/* 재생 */
+.player { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.player .ib { width: 38px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer;
+  display: inline-grid; place-items: center; }
+.player .ib:hover { border-color: var(--muted); }
+.player .ib.play { width: 46px; background: var(--ink); border-color: var(--ink); }
+.player .ib.play svg { fill: var(--surface); }
+.player .ib svg { width: 16px; height: 16px; fill: var(--ink); }
+.player input[type="range"] { flex: 1 1 160px; min-width: 120px; accent-color: var(--ink); }
+.player .pos { font-family: var(--font-mono); font-size: 0.82rem; color: var(--muted); min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 아래 카드 */
+.below { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; align-items: start; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.meter { display: grid; grid-template-columns: 112px 1fr auto; gap: 10px; align-items: center; font-size: 0.86rem; }
+.meter .track { height: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; }
+.meter .fill { height: 100%; border-radius: 99px; transition: width 0.25s; }
+.meter .fill.d { background: var(--dj); } .meter .fill.b { background: var(--bf); }
+.meter .num { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.qtext { margin: 0; } .qtext.qok b, .qtext.qbad b { color: var(--ink); }
+.qtext.qok { color: var(--dj); } .qtext.qbad { color: var(--neg); }
+.qopts { display: flex; flex-wrap: wrap; gap: 8px; }
+.qopt { font-weight: 600; } .qopt .mono { font-family: var(--font-mono); color: var(--muted); font-weight: 400; }
+.qopt:disabled { cursor: default; opacity: 0.75; }
+.qopt.ok { background: var(--conf-soft); border-color: var(--conf); opacity: 1; }
+.qopt.bad { background: var(--neg-soft); border-color: var(--neg); opacity: 1; }
+.labbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.labbar input[type="number"] { width: 92px; font-family: var(--font-mono); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2); padding: 5px 8px; color: var(--ink); }
+#labTable th { line-height: 1.25; } #labTable td { font-variant-numeric: tabular-nums; }
+.lnum { min-width: 86px; } .mut { color: var(--muted); }
+.lbar { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin-top: 3px; }
+.lbar i { display: block; height: 100%; border-radius: 99px; } .lbar i.d { background: var(--dj); } .lbar i.b { background: var(--bf); }
+td.ok { color: var(--dj); font-weight: 600; } td.bad { background: var(--neg-soft); color: var(--neg); font-weight: 600; }
+.edges td input { width: 70px; text-align: center; font-family: var(--font-mono); border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); padding: 2px 4px; color: var(--ink); }
+.edges td input.negw { color: var(--neg); font-weight: 600; }
+.mv { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; width: 30px; height: 26px; cursor: pointer; }
+.mv:disabled { opacity: 0.35; cursor: default; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 0.84rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { width: 26px; height: 14px; }
+.foot { color: var(--muted); font-size: 0.84rem; display: grid; gap: 8px; }
+@media (max-width: 560px) {
+  body { font-size: 14px; }
+  th, td { padding: 3px 4px; font-size: 0.76rem; }
+  .panel, .card { padding: 12px; }
+  .meter { grid-template-columns: 90px 1fr auto; }
+  .counter { margin-left: 0; width: 100%; }
+}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1><span class="d">Dijkstra</span><span class="vs">vs</span><span class="b">Bellman-Ford</span></h1>
+      <p>같은 그래프에서 탐욕 알고리즘(Dijkstra)과 동적계획 알고리즘(Bellman-Ford)을 한 단계씩 실행해 봅니다. 출발점은 v1입니다.</p>
+    </div>
+    <div class="bar" role="group" aria-label="실험 설정">
+      <div class="seg" role="group" aria-label="예제 그래프">
+        <button type="button" id="scBasic" data-sc="basic">기본 그래프</button>
+        <button type="button" id="scNeg" data-sc="negative">음수 간선</button>
+        <button type="button" id="scCyc" data-sc="cycle">음수 사이클</button>
+      </div>
+      <label class="field" id="orderField">Bellman-Ford 간선 순서
+        <select id="orderSel">
+          <option value="worst">출발점에서 먼 간선부터</option>
+          <option value="best">출발점에서 가까운 간선부터</option>
+          <option value="custom" disabled>직접 바꾼 순서</option>
+        </select>
+      </label>
+      <label class="field"><input type="checkbox" id="earlyChk"> 조기 종료</label>
+      <label class="field">속도
+        <select id="speedSel">
+          <option value="1600">느리게</option>
+          <option value="900" selected>보통</option>
+          <option value="420">빠르게</option>
+        </select>
+      </label>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="resetAll">처음으로</button>
+      <button type="button" class="btn primary" id="playAll">둘 다 재생</button>
+    </div>
+    <p class="note" id="scNote"></p>
+  </header>
+
+  <main class="panels">
+    <section class="panel dj" id="pDJ" aria-labelledby="djTitle">
+      <div class="phead">
+        <span class="tag">Dijkstra · 탐욕</span>
+        <h2 id="djTitle"></h2>
+        <span class="counter" id="djCounter"></span>
+      </div>
+      <div class="graph" id="djGraph"></div>
+      <div class="strip" id="djStrip"></div>
+      <div class="tablewrap"><table id="djTable" aria-label="Dijkstra 배열 상태"></table></div>
+      <div class="explain" aria-live="polite">
+        <p><span class="pill what">무엇을</span><span id="djWhat"></span></p>
+        <p><span class="pill why">왜</span><span id="djWhy"></span></p>
+      </div>
+      <div class="player" data-p="dj"></div>
+    </section>
+
+    <section class="panel bf" id="pBF" aria-labelledby="bfTitle">
+      <div class="phead">
+        <span class="tag">Bellman-Ford · 동적계획</span>
+        <h2 id="bfTitle"></h2>
+        <span class="counter" id="bfCounter"></span>
+      </div>
+      <div class="graph" id="bfGraph"></div>
+      <div class="strip" id="bfStrip"></div>
+      <div class="tablewrap"><table id="bfTable" aria-label="Bellman-Ford 배열 상태"></table></div>
+      <div class="explain" aria-live="polite">
+        <p><span class="pill what">무엇을</span><span id="bfWhat"></span></p>
+        <p><span class="pill why">왜</span><span id="bfWhy"></span></p>
+      </div>
+      <div class="rounds">
+        <h3>라운드가 끝날 때마다의 length (k행 = 간선 k개 이하까지 반영)</h3>
+        <div class="tablewrap"><table id="bfRows"></table></div>
+      </div>
+      <div class="player" data-p="bf"></div>
+    </section>
+  </main>
+
+  <section class="below">
+    <div class="card" id="compare">
+      <h3>두 알고리즘 비교</h3>
+      <div class="meter"><span>Dijkstra 비교</span><div class="track"><div class="fill d" id="mD"></div></div><span class="num" id="mDn"></span></div>
+      <div class="meter"><span>Bellman-Ford 완화 검사</span><div class="track"><div class="fill b" id="mB"></div></div><span class="num" id="mBn"></span></div>
+      <div id="resultBox"></div>
+    </div>
+    <div class="card edges">
+      <h3>간선 목록 · Bellman-Ford가 검사하는 순서</h3>
+      <p class="note">가중치를 바꾸거나 순서를 옮기면 두 알고리즘을 처음부터 다시 실행합니다.</p>
+      <div class="tablewrap"><table id="edgeTable"></table></div>
+      <div><button type="button" class="btn" id="restore">예제 값으로 되돌리기</button></div>
+    </div>
+    <div class="card" id="quiz">
+      <h3>직접 맞혀 보기 · Dijkstra의 다음 선택</h3>
+      <div id="quizBox"></div>
+    </div>
+    <div class="card" id="lab">
+      <h3>실험 · 그래프가 커지면 누가 더 많이 일할까</h3>
+      <p class="note">크기마다 무작위 그래프 20개(가중치 1~20, 간선 순서도 무작위)를 만들어 두 알고리즘을 실제로 돌리고, 단위 연산 횟수의 평균을 냅니다. 시드가 같으면 항상 같은 그래프가 나옵니다.</p>
+      <div class="labbar">
+        <label class="field">간선 수
+          <select id="labDensity">
+            <option value="sparse">적음 (m = 3n)</option>
+            <option value="dense">많음 (m = n(n − 1))</option>
+          </select>
+        </label>
+        <label class="field">시드 <input type="number" id="labSeed" value="2026" min="1" max="999999" step="1"></label>
+        <button type="button" class="btn" id="labRandom">다른 그래프로</button>
+      </div>
+      <div class="tablewrap"><table id="labTable"></table></div>
+      <p class="note" id="labNote"></p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="legend" id="legend"></div>
+    <p>Dijkstra는 슬라이드(algo4 81쪽)의 배열 버전을 따르되, 확정 여부는 length = −1 대신 inY 배열로 표시합니다(슬라이드 88쪽 방식). 그래서 거리가 음수가 되어도 확정 표시와 섞이지 않습니다.
+    Bellman-Ford는 라운드마다 모든 간선을 위 목록 순서로 완화하고, n − 1 라운드 뒤 한 번 더 검사해 음수 사이클을 찾습니다.</p>
+  </footer>
+</div>
+
+<script>
+/* 최단경로 단계 엔진: Dijkstra(슬라이드 배열 버전, 확정은 inY 배열로 표시)와 Bellman-Ford.
+   정점 번호는 1..n, 간선은 [u, v, w] 배열이며 배열 순서 = Bellman-Ford 검사 순서. */
+const SP = (() => {
+  const INF = Infinity;
+  const fmt = (x) => (x === INF ? "∞" : x < 0 ? "−" + Math.abs(x) : String(x));
+  const sum = (a, b) => (a === INF || b === INF ? INF : a + b);
+  const V = (i) => "v" + i;
+  const plus = (a, b) => `${fmt(a)} + ${b < 0 ? "(" + fmt(b) + ")" : fmt(b)}`;
+  // v1(원)만 받침이 있다고 보고 조사를 고른다 (v2 투, v3 쓰리 …)
+  const J = (i, pair) => { const [a, b] = pair.split("/"); return V(i) + (i === 1 ? a : b); };
+
+  function buildW(n, edges) {
+    const W = [];
+    for (let i = 0; i <= n; i++) {
+      W.push(new Array(n + 1).fill(INF));
+      W[i][i] = 0;
+    }
+    for (const [u, v, w] of edges) W[u][v] = w;
+    return W;
+  }
+
+  // ───────────── Dijkstra ─────────────
+  function dijkstra(n, edges) {
+    const W = buildW(n, edges);
+    const hasNeg = edges.some((e) => e[2] < 0);
+    const touch = new Array(n + 1).fill(0);
+    const length = new Array(n + 1).fill(INF);
+    const inY = new Array(n + 1).fill(false);
+    const final = new Array(n + 1).fill(null);
+    const order = [1];
+    length[1] = 0; inY[1] = true; final[1] = 0;
+    for (let i = 2; i <= n; i++) { touch[i] = 1; length[i] = W[1][i]; }
+    const F = [];
+    let comps = 0;
+    const total = 2 * (n - 1) * (n - 1);
+    const steps = [];
+    const snap = (o) => Object.assign({
+      length: length.slice(), touch: touch.slice(), inY: inY.slice(), final: final.slice(),
+      F: F.map((e) => e.slice()), order: order.slice(), comps, total,
+    }, o);
+
+    const init = [];
+    for (let i = 2; i <= n; i++) init.push(`${V(i)} = ${fmt(length[i])}`);
+    steps.push(snap({
+      phase: "init", t: 0, title: "0단계 · 초기화", changed: [],
+      what: `Y = {v1}에서 시작한다. 각 정점의 length를 v1에서 바로 가는 간선 길이로, touch를 1로 놓는다 (${init.join(", ")}).`,
+      why: "아직 거쳐 갈 정점이 없으므로 지금 아는 경로는 v1에서 바로 가는 간선뿐이다. 간선이 없으면 ∞로 둔다.",
+    }));
+
+    for (let t = 1; t <= n - 1; t++) {
+      let min = INF, vnear = -1;
+      const cands = [];
+      for (let i = 2; i <= n; i++) {
+        comps++;
+        if (!inY[i]) {
+          cands.push([i, length[i]]);
+          if (length[i] <= min) { min = length[i]; vnear = i; }   // 슬라이드: 0 <= length[i] <= min
+        }
+      }
+      if (vnear < 0 || min === INF) {
+        const rest = cands.map((c) => V(c[0])).join(", ");
+        steps.push(snap({
+          phase: "stuck", t, title: `${t}단계 · 멈춤`, changed: [],
+          what: `남은 정점 ${rest}의 length가 모두 ∞이다.`,
+          why: "v1에서 갈 수 있는 경로가 없는 정점들이다.",
+        }));
+        break;
+      }
+      const u = touch[vnear];
+      F.push([u, vnear]);
+      final[vnear] = length[vnear];
+      inY[vnear] = true;
+      order.push(vnear);
+      const candTxt = cands.map((c) => `${V(c[0])}: ${fmt(c[1])}`).join(", ");
+      let why;
+      if (cands.length === 1) why = `남은 정점이 ${V(vnear)} 하나뿐이다.`;
+      else if (hasNeg) why = 'Dijkstra는 "다른 정점을 거쳐 오면 길이가 늘어나기만 한다"고 보고 확정한다. 하지만 이 그래프에는 음수 간선이 있어서 이 판단이 틀릴 수 있다.';
+      else why = `가중치가 0 이상이므로, 아직 확정되지 않은 다른 정점을 거쳐 ${V(vnear)}에 오는 경로는 그 정점까지 이미 ${fmt(min)} 이상이라 더 짧아질 수 없다.`;
+      steps.push(snap({
+        phase: "select", t, vnear, edge: [u, vnear], cands, title: `${t}단계 · 선정: vnear = ${V(vnear)}`, changed: [],
+        what: `Y 밖 후보 ${candTxt} 중 length가 가장 작은 ${V(vnear)}(${fmt(min)})를 vnear로 고른다. ${J(vnear, '을/를')} 확정하고 간선 (${V(u)}, ${V(vnear)})를 F에 넣는다.`,
+        why,
+      }));
+
+      const updates = [], blocked = [], same = [];
+      for (let i = 2; i <= n; i++) {
+        comps++;
+        if (i === vnear || W[vnear][i] === INF) continue;
+        const w = W[vnear][i];
+        const cand = sum(final[vnear], w);
+        if (inY[i]) {
+          if (cand < final[i]) blocked.push({ i, w, cand, old: final[i] });
+          continue;
+        }
+        if (cand < length[i]) {
+          updates.push({ i, w, old: length[i], neu: cand, oldTouch: touch[i] });
+          length[i] = cand; touch[i] = vnear;
+        } else same.push({ i, w, cand, old: length[i] });
+      }
+      const parts = [];
+      if (updates.length) parts.push(`${J(vnear, '을/를')} 거치는 경로로 고친다: ` +
+        updates.map((x) => `${V(x.i)} ${fmt(x.old)} → ${fmt(x.neu)} (${plus(final[vnear], x.w)})`).join(", ") + ".");
+      for (const b of blocked) parts.push(`${V(vnear)} → ${V(b.i)}로 가면 ${plus(final[vnear], b.w)} = ${fmt(b.cand)}로 ${V(b.i)}의 ${fmt(b.old)}보다 짧지만, ${J(b.i, '은/는')} 이미 확정되어 고치지 않는다.`);
+      if (!updates.length && !blocked.length) {
+        const out = edges.filter((e) => e[0] === vnear).length;
+        parts.push(out ? `${J(vnear, '을/를')} 거쳐도 지금보다 짧아지는 정점이 없다.` : `${V(vnear)}에서 나가는 간선이 없어 고칠 값이 없다.`);
+      }
+      let uwhy;
+      if (blocked.length) uwhy = "탐욕 알고리즘은 한 번 확정한 정점을 다시 고치지 않는다. 그래서 음수 간선으로 생긴 더 짧은 경로를 반영하지 못한다.";
+      else if (updates.length) uwhy = `확정된 ${J(vnear, '을/를')} 거쳐 가는 새 경로가 지금까지 찾은 경로보다 짧으면 length와 touch를 바꾼다.`;
+      else uwhy = "고칠 값이 없으면 그대로 다음 단계로 넘어간다.";
+      steps.push(snap({
+        phase: "update", t, vnear, updates, blocked, same, title: `${t}단계 · ${J(vnear, '을/를')} 거쳐 갱신`,
+        changed: updates.map((x) => x.i), what: parts.join(" "), why: uwhy,
+      }));
+    }
+    const res = [];
+    for (let i = 2; i <= n; i++) res.push(`${V(i)} = ${final[i] === null ? "?" : fmt(final[i])}`);
+    steps.push(snap({
+      phase: "done", t: n, title: "끝 · 최단경로 트리 완성", changed: [],
+      what: `n − 1 = ${n - 1}번 반복을 마쳤다. 결과: ${res.join(", ")}.`,
+      why: `모든 정점이 Y에 들어갔다(Y = V). 비교 횟수는 2(n − 1)² = ${total}번으로 입력과 관계없이 같다 → Θ(n²).`,
+    }));
+    return { steps, final, F, comps, total, hasNeg };
+  }
+
+  // ───────────── Bellman-Ford ─────────────
+  function bellmanFord(n, edges, earlyStop) {
+    const m = edges.length;
+    const length = new Array(n + 1).fill(INF);
+    const touch = new Array(n + 1).fill(0);
+    length[1] = 0;
+    const rows = [length.slice()];
+    const steps = [];
+    let checks = 0;
+    const snap = (o) => Object.assign({ length: length.slice(), touch: touch.slice(), rows: rows.map((r) => r.slice()), checks }, o);
+    steps.push(snap({
+      phase: "init", k: 0, title: "0라운드 · 초기화", status: new Array(m).fill("pending"), changed: [],
+      what: `length[v1] = 0, 나머지는 ∞로 둔다. 매 라운드 간선을 e1부터 e${m}까지 이 순서로 검사한다.`,
+      why: "간선 0개로 갈 수 있는 곳은 v1뿐이다. DP 표의 D(0) 행에 해당한다.",
+    }));
+    let stopped = 0;
+    for (let k = 1; k <= n - 1; k++) {
+      const before = length.slice();
+      const status = new Array(m).fill("pending");
+      const changed = new Set();
+      for (let j = 0; j < m; j++) {
+        checks++;
+        const [u, v, w] = edges[j];
+        const lu = length[u], old = length[v];
+        let res, what, why = `${k}라운드: 모든 간선을 순서대로 완화한다. 이 라운드가 끝나면 간선 ${k}개 이하로 가는 최단거리가 반영된다.`;
+        if (lu === INF) {
+          res = "skip";
+          what = `e${j + 1}: ${V(u)} → ${V(v)} (w = ${fmt(w)}). length[${V(u)}] = ∞라 이 간선으로는 아직 갈 수 없다 → 건너뜀.`;
+        } else {
+          const cand = lu + w;
+          if (cand < old) {
+            res = "upd";
+            length[v] = cand; touch[v] = u; changed.add(v);
+            what = `e${j + 1}: length[${V(u)}] + w = ${plus(lu, w)} = ${fmt(cand)} < length[${V(v)}] = ${fmt(old)} → length[${V(v)}] = ${fmt(cand)}, touch[${V(v)}] = ${u}.`;
+            why += ` ${J(u, '을/를')} 거쳐 ${V(v)}로 가는 경로가 지금까지 찾은 것보다 짧다.`;
+          } else {
+            res = "same";
+            what = `e${j + 1}: length[${V(u)}] + w = ${plus(lu, w)} = ${fmt(cand)} ≥ length[${V(v)}] = ${fmt(old)} → 그대로.`;
+          }
+        }
+        status[j] = res;
+        steps.push(snap({
+          phase: "relax", k, j, res, title: `${k}라운드 · e${j + 1} 완화`, status: status.slice(),
+          before, changed: [...changed], edge: edges[j], what, why,
+        }));
+      }
+      rows.push(length.slice());
+      const ch = [...changed].sort((a, b) => a - b);
+      let what, why;
+      if (ch.length) {
+        what = `${k}라운드 끝. 줄어든 값: ` + ch.map((v) => `${V(v)} ${fmt(before[v])} → ${fmt(length[v])}`).join(", ") + ".";
+        why = `간선 ${k}개 이하로 가는 경로가 모두 반영됐다. 라운드를 n − 1 = ${n - 1}번 하면 간선이 가장 많은 최단경로(${n - 1}개)까지 반영된다.`;
+      } else {
+        what = `${k}라운드 끝. 이번 라운드에는 줄어든 값이 없다.`;
+        why = earlyStop
+          ? "한 라운드 동안 아무 값도 줄지 않으면 다음 라운드도 같으므로 여기서 끝낸다 (조기 종료)."
+          : "값이 더 줄지 않지만, 코드는 정해진 n − 1 라운드를 모두 돈다. 조기 종료를 켜면 여기서 끝낼 수 있다.";
+      }
+      steps.push(snap({ phase: "roundEnd", k, title: `${k}라운드 끝`, status: status.slice(), before, changed: ch, what, why }));
+      if (earlyStop && !ch.length) { stopped = k; break; }
+    }
+    let neg = false;
+    if (!stopped) {
+      const status = new Array(m).fill("pending");
+      for (let j = 0; j < m; j++) {
+        checks++;
+        const [u, v, w] = edges[j];
+        const lu = length[u], old = length[v];
+        let res, what;
+        if (lu === INF) { res = "skip"; what = `검사 e${j + 1}: length[${V(u)}] = ∞ → 건너뜀.`; }
+        else if (lu + w < old) {
+          res = "neg"; neg = true;
+          what = `검사 e${j + 1}: ${plus(lu, w)} = ${fmt(lu + w)} < length[${V(v)}] = ${fmt(old)} → 또 줄어든다!`;
+        } else { res = "same"; what = `검사 e${j + 1}: ${plus(lu, w)} = ${fmt(lu + w)} ≥ length[${V(v)}] = ${fmt(old)} → 그대로.`; }
+        status[j] = res;
+        steps.push(snap({
+          phase: "check", k: n, j, res, title: `음수 사이클 검사 · e${j + 1}`, status: status.slice(), changed: [], edge: edges[j],
+          what, why: "음수 사이클이 없다면 n − 1 라운드 뒤에는 어떤 값도 줄어들 수 없다. 그래서 한 번 더 검사해 줄어드는 곳이 있는지 본다.",
+        }));
+      }
+    }
+    const resTxt = [];
+    for (let i = 2; i <= n; i++) resTxt.push(`${V(i)} = ${fmt(length[i])}`);
+    const last = steps[steps.length - 1];
+    if (neg) {
+      steps.push(snap({
+        phase: "result", k: n, neg, title: "결과 · 음수 사이클 발견", status: last.status, changed: [],
+        what: "n − 1 라운드 뒤에도 줄어드는 간선이 있다 → 음수 사이클이 있다고 보고한다 (false 반환).",
+        why: "돌 때마다 길이가 줄어드는 사이클이 있어 그 사이클을 지나는 정점의 최단거리는 정의되지 않는다.",
+      }));
+    } else {
+      steps.push(snap({
+        phase: "result", k: n, neg, title: stopped ? `결과 · ${stopped}라운드에서 조기 종료` : "결과 · 음수 사이클 없음",
+        status: last.status, changed: [],
+        what: (stopped ? "더 줄어드는 값이 없어 끝냈다. " : "한 번 더 검사해도 줄어드는 곳이 없다 → 음수 사이클 없음. ") + `결과: ${resTxt.join(", ")}.`,
+        why: stopped
+          ? `조기 종료로 완화 검사 ${checks}번에 끝났다. 끝까지 돌면 n·m = ${n * m}번이다.`
+          : `완화 검사 (n − 1)·m + m = n·m = ${n}×${m} = ${checks}번 → Θ(nm).`,
+      }));
+    }
+    return { steps, final: length.slice(), touch: touch.slice(), neg, checks, stopped, rows };
+  }
+
+  return { INF, fmt, dijkstra, bellmanFord, buildW };
+})();
+if (typeof module !== "undefined") module.exports = SP;
+
+</script>
+<script>
+// 무작위 그래프 실험: 그래프가 커질 때 두 알고리즘의 단위 연산 횟수를 센다.
+// 같은 시드면 항상 같은 그래프가 만들어지므로, 보고서의 표를 웹에서 그대로 재현할 수 있다.
+const SPX = (() => {
+  const INF = Infinity;
+  function rng(seed) { // mulberry32
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuffle(arr, rnd) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+  // 정점 n개, 간선 m개. v1에서 모든 정점에 갈 수 있고, 가중치는 1~20, 간선 순서는 무작위.
+  function randomGraph(n, m, rnd) {
+    const order = [1].concat(shuffle(Array.from({ length: n - 1 }, (_, i) => i + 2), rnd));
+    const used = new Set(), edges = [];
+    const add = (u, v) => { used.add(u * 1000 + v); edges.push([u, v, 1 + Math.floor(rnd() * 20)]); };
+    for (let k = 1; k < n; k++) add(order[Math.floor(rnd() * k)], order[k]); // v1에서 뻗는 트리
+    const rest = [];
+    for (let u = 1; u <= n; u++) for (let v = 1; v <= n; v++) if (u !== v && !used.has(u * 1000 + v)) rest.push([u, v]);
+    shuffle(rest, rnd);
+    for (let i = 0; edges.length < m && i < rest.length; i++) add(rest[i][0], rest[i][1]);
+    return shuffle(edges, rnd);
+  }
+  // 슬라이드의 배열 버전 Dijkstra. 비교 횟수를 실제로 센다.
+  function dijkstraCount(n, edges) {
+    const W = Array.from({ length: n + 1 }, () => new Array(n + 1).fill(INF));
+    for (const [u, v, w] of edges) W[u][v] = w;
+    const length = new Array(n + 1).fill(INF), inY = new Array(n + 1).fill(false), dist = new Array(n + 1).fill(INF);
+    dist[1] = 0; inY[1] = true;
+    for (let i = 2; i <= n; i++) length[i] = W[1][i];
+    let comps = 0;
+    for (let t = 1; t <= n - 1; t++) {
+      let min = INF, vnear = -1;
+      for (let i = 2; i <= n; i++) { comps++; if (!inY[i] && length[i] <= min) { min = length[i]; vnear = i; } }
+      inY[vnear] = true; dist[vnear] = length[vnear];
+      for (let i = 2; i <= n; i++) { comps++; if (!inY[i] && length[vnear] + W[vnear][i] < length[i]) length[i] = length[vnear] + W[vnear][i]; }
+    }
+    return { dist, comps };
+  }
+  // Bellman-Ford. early = true이면 값이 하나도 안 바뀐 라운드에서 바로 끝낸다.
+  function bellmanFordCount(n, edges, early) {
+    const length = new Array(n + 1).fill(INF);
+    length[1] = 0;
+    let checks = 0, lastChange = 0, stopped = false;
+    for (let k = 1; k <= n - 1; k++) {
+      let changed = false;
+      for (const [u, v, w] of edges) {
+        checks++;
+        if (length[u] !== INF && length[u] + w < length[v]) { length[v] = length[u] + w; changed = true; }
+      }
+      if (changed) lastChange = k;
+      else if (early) { stopped = true; break; }
+    }
+    if (!stopped) checks += edges.length; // 음수 사이클 검사
+    return { dist: length, checks, lastChange };
+  }
+  const SIZES = [5, 10, 20, 40, 80];
+  const edgeCount = (n, density) => (density === "dense" ? n * (n - 1) : 3 * n);
+  function run(seed, density, trials) {
+    const rnd = rng(seed), rows = [];
+    let agree = 0, total = 0;
+    for (const n of SIZES) {
+      const m = edgeCount(n, density);
+      let dj = 0, full = 0, early = 0, rounds = 0, maxRounds = 0;
+      for (let t = 0; t < trials; t++) {
+        const g = randomGraph(n, m, rnd);
+        const a = dijkstraCount(n, g), b = bellmanFordCount(n, g, false), c = bellmanFordCount(n, g, true);
+        dj += a.comps; full += b.checks; early += c.checks; rounds += c.lastChange;
+        maxRounds = Math.max(maxRounds, c.lastChange);
+        total++;
+        let same = true;
+        for (let v = 1; v <= n; v++) if (a.dist[v] !== b.dist[v] || a.dist[v] !== c.dist[v]) same = false;
+        if (same) agree++;
+      }
+      rows.push({ n, m, dj: dj / trials, full: full / trials, early: early / trials, rounds: rounds / trials, maxRounds });
+    }
+    return { seed, density, trials, rows, agree, total };
+  }
+  return { run, rng, randomGraph, dijkstraCount, bellmanFordCount, SIZES };
+})();
+
+
+</script>
+<script>
+(() => {
+  const { INF, fmt } = SP;
+  const SCEN = {
+    basic: {
+      name: "기본 그래프", n: 6,
+      pos: { 1: [0, 0.5], 2: [1.25, 1], 3: [1.25, 0], 4: [2.5, 1], 5: [2.5, 0], 6: [3.75, 0.5] },
+      edges: [[5, 6, 3], [4, 6, 6], [4, 5, 2], [3, 5, 10], [3, 4, 8], [2, 4, 5], [3, 2, 1], [1, 3, 2], [1, 2, 4]],
+      best: [[1, 3, 2], [1, 2, 4], [3, 2, 1], [3, 4, 8], [3, 5, 10], [2, 4, 5], [4, 5, 2], [4, 6, 6], [5, 6, 3]],
+      note: "<b>기본 그래프</b> · 음수 간선이 없어 두 알고리즘의 결과가 같습니다. 간선 순서를 바꿔 Bellman-Ford의 라운드 수가 어떻게 달라지는지 보세요.",
+    },
+    negative: {
+      name: "음수 간선", n: 4,
+      pos: { 1: [0, 0.5], 2: [1.4, 1], 3: [1.4, 0], 4: [2.8, 1] },
+      edges: [[2, 4, 3], [3, 2, -5], [1, 2, 2], [1, 3, 6]],
+      note: "<b>음수 간선</b> · v3 → v2가 −5입니다. Dijkstra는 v2를 2로 먼저 확정해 버려 틀린 답을 내고, Bellman-Ford는 정답(v2 = 1, v4 = 4)을 찾습니다.",
+    },
+    cycle: {
+      name: "음수 사이클", n: 4,
+      pos: { 1: [0, 0.5], 2: [1.4, 0.5], 3: [2.8, 0.5], 4: [4.2, 0.5] },
+      edges: [[1, 2, 1], [2, 3, -2], [3, 2, 1], [3, 4, 2]],
+      note: "<b>음수 사이클</b> · v2 → v3 → v2를 돌 때마다 길이가 1씩 줄어 최단거리가 정의되지 않습니다. Bellman-Ford만 이를 검출합니다.",
+    },
+  };
+  const S = { sc: "basic", edges: [], order: "worst", early: false, speed: 900, dj: { i: 0, run: null, timer: null }, bf: { i: 0, run: null, timer: null } };
+  const $ = (id) => document.getElementById(id);
+  const key = (u, v) => u + "-" + v;
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  function loadScenario(sc, keepHash) {
+    S.sc = sc;
+    const d = SCEN[sc];
+    S.edges = d.edges.map((e) => e.slice());
+    S.order = "worst";
+    $("orderSel").value = "worst";
+    $("orderField").hidden = sc !== "basic";
+    document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sc === sc)));
+    $("scNote").innerHTML = d.note;
+    if (!keepHash) { try { history.replaceState(null, "", "#" + sc); } catch (e) { /* 미리보기 등에서 무시 */ } }
+    recompute(true);
+  }
+
+  function recompute(reset) {
+    const n = SCEN[S.sc].n;
+    S.dj.run = SP.dijkstra(n, S.edges);
+    S.bf.run = SP.bellmanFord(n, S.edges, S.early);
+    if (reset) { S.dj.i = 0; S.bf.i = 0; }
+    S.dj.i = Math.min(S.dj.i, S.dj.run.steps.length - 1);
+    S.bf.i = Math.min(S.bf.i, S.bf.run.steps.length - 1);
+    stop("dj"); stop("bf");
+    resetQuiz();
+    renderAll();
+  }
+
+  // ───────── 직접 맞혀 보기 ─────────
+  const Q = { list: [], k: 0, picked: null, score: 0 };
+  function resetQuiz() {
+    Q.list = [];
+    S.dj.run.steps.forEach((st, i) => { if (st.phase === "select") Q.list.push(i); });
+    Q.k = 0; Q.picked = null; Q.score = 0;
+    renderQuiz();
+  }
+  function renderQuiz() {
+    const box = $("quizBox"), steps = S.dj.run.steps, n = SCEN[S.sc].n;
+    if (Q.k >= Q.list.length) {
+      box.innerHTML = `<p class="qtext"><b>${Q.list.length}문제 중 ${Q.score}문제</b>를 맞혔습니다. Dijkstra는 매번 Y 밖에서 length가 가장 작은 정점을 고릅니다.` +
+        (S.sc === "negative" ? " 이 그래프처럼 음수 간선이 있으면 그 선택이 틀릴 수 있습니다." : "") +
+        `</p><div><button type="button" class="btn" data-q="again">다시 풀기</button></div>`;
+      return;
+    }
+    const i = Q.list[Q.k], st = steps[i], prev = steps[i - 1];
+    const opts = [];
+    for (let v = 2; v <= n; v++) if (!prev.inY[v]) opts.push(v);
+    const best = Math.min(...opts.map((v) => prev.length[v]));
+    let h = `<p class="qtext"><b>문제 ${Q.k + 1} / ${Q.list.length}</b> · 지금 Y 밖 정점의 length는 아래와 같습니다. Dijkstra가 다음에 확정할 정점은?</p><div class="qopts">`;
+    for (const v of opts) {
+      let c = "";
+      if (Q.picked !== null) c = v === st.vnear ? " ok" : v === Q.picked ? " bad" : "";
+      h += `<button type="button" class="btn qopt${c}" data-q="pick" data-v="${v}" ${Q.picked !== null ? "disabled" : ""}>v${v} <span class="mono">${fmt(prev.length[v])}</span></button>`;
+    }
+    h += "</div>";
+    if (Q.picked !== null) {
+      const right = prev.length[Q.picked] === best;
+      h += `<p class="qtext ${right ? "qok" : "qbad"}">${right ? "맞았습니다." : "아쉽습니다."} Y 밖에서 length가 가장 작은 정점은 <b>v${st.vnear} (${fmt(best)})</b>입니다. 위 Dijkstra 화면이 이 단계로 이동했습니다.</p>` +
+        `<div><button type="button" class="btn primary" data-q="next">${Q.k + 1 < Q.list.length ? "다음 문제" : "결과 보기"}</button></div>`;
+    }
+    box.innerHTML = h;
+  }
+  $("quizBox").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-q]");
+    if (!b) return;
+    const a = b.dataset.q;
+    if (a === "again") { resetQuiz(); stop("dj"); S.dj.i = 0; renderAll(); return; }
+    if (a === "pick") {
+      const i = Q.list[Q.k], prev = S.dj.run.steps[i - 1], n = SCEN[S.sc].n;
+      Q.picked = +b.dataset.v;
+      let best = INF;
+      for (let v = 2; v <= n; v++) if (!prev.inY[v]) best = Math.min(best, prev.length[v]);
+      if (prev.length[Q.picked] === best) Q.score++;
+      stop("dj"); S.dj.i = i; renderAll(); renderQuiz();
+      return;
+    }
+    if (a === "next") {
+      Q.k++; Q.picked = null;
+      if (Q.k < Q.list.length) { stop("dj"); S.dj.i = Q.list[Q.k] - 1; renderAll(); }
+      renderQuiz();
+    }
+  });
+
+  // ───────── 실험 ─────────
+  const num = (x) => (Math.round(x * 10) / 10).toLocaleString("ko-KR");
+  function renderLab() {
+    let seed = Math.round(Number($("labSeed").value));
+    if (!Number.isFinite(seed) || seed < 1) seed = 2026;
+    seed = Math.min(seed, 999999);
+    $("labSeed").value = seed;
+    const density = $("labDensity").value;
+    const r = SPX.run(seed, density, 20);
+    const top = Math.max(...r.rows.map((x) => Math.max(x.dj, x.early)));
+    let h = "<tr><th>n</th><th>m</th><th>Dijkstra 비교</th><th>Bellman-Ford 검사<br>(조기 종료)</th><th>값이 바뀐<br>마지막 라운드</th><th>Bellman-Ford 검사<br>(끝까지, nm)</th></tr>";
+    for (const x of r.rows) {
+      const bar = (v, cls) => `<div class="lbar"><i class="${cls}" style="width:${Math.max(1.5, 100 * v / top).toFixed(1)}%"></i></div>`;
+      h += `<tr><td>${x.n}</td><td>${x.m.toLocaleString("ko-KR")}</td>` +
+        `<td class="lnum">${num(x.dj)}${bar(x.dj, "d")}</td><td class="lnum">${num(x.early)}${bar(x.early, "b")}</td>` +
+        `<td>평균 ${x.rounds.toFixed(1)} · 최대 ${x.maxRounds}<br><span class="mut">(n − 1 = ${x.n - 1})</span></td><td>${num(x.full)}</td></tr>`;
+    }
+    $("labTable").innerHTML = h;
+    const last = r.rows[r.rows.length - 1];
+    const msg = density === "sparse"
+      ? `간선이 적으면 배열 Dijkstra는 간선 수와 상관없이 2(n − 1)²번을 비교하므로, n = ${last.n}에서 조기 종료를 쓴 Bellman-Ford(${num(last.early)}번)보다 오히려 많이(${num(last.dj)}번) 일합니다. 간선 순서가 무작위이면 값이 평균 ${last.rounds.toFixed(1)}라운드 만에 다 정해지기 때문입니다.`
+      : `간선이 많으면 한 라운드에 간선 ${last.m.toLocaleString("ko-KR")}개를 모두 봐야 해서, n = ${last.n}에서 Bellman-Ford는 조기 종료를 써도 ${num(last.early)}번으로 Dijkstra(${num(last.dj)}번)보다 많이 일합니다. 끝까지 돌리면 ${num(last.full)}번입니다.`;
+    $("labNote").innerHTML = `<b>두 알고리즘의 최단거리가 ${r.total}개 그래프 중 ${r.agree}개에서 같았습니다.</b> ${msg} 단, 최악의 경우는 여전히 Θ(nm)이고, 두 알고리즘의 단위 연산(비교와 완화 검사)은 서로 다른 연산입니다.`;
+  }
+  $("labDensity").addEventListener("change", renderLab);
+  $("labSeed").addEventListener("change", renderLab);
+  $("labRandom").addEventListener("click", () => { $("labSeed").value = 1 + Math.floor(Math.random() * 999999); renderLab(); });
+
+  // ───────── 그래프 그리기 ─────────
+  const ARROWS = ["def", "tree", "cand", "upd", "scan", "block", "neg", "faded"];
+  function graphSVG(pfx, view) {
+    const k = window.matchMedia && window.matchMedia("(max-width: 600px)").matches ? 1.32 : 1;
+    const d = SCEN[S.sc], n = d.n, R = 20 * Math.min(k, 1.15), unit = k > 1 ? 104 : 132;
+    const xs = Object.values(d.pos).map((p) => p[0]), ys = Object.values(d.pos).map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const flat = maxY - minY < 1e-9;
+    const padX = 46 * k, padTop = (flat ? 58 : 50) * k, padBot = (flat ? 58 : 50) * k;
+    const Wd = (maxX - minX) * unit + 2 * padX, Ht = (maxY - minY) * unit + padTop + padBot;
+    const P = {};
+    for (const [v, [x, y]] of Object.entries(d.pos)) P[v] = [padX + (x - minX) * unit, padTop + (maxY - y) * unit];
+    const eset = new Set(S.edges.map((e) => key(e[0], e[1])));
+    const idx = {};
+    S.edges.forEach((e, i) => { idx[key(e[0], e[1])] = i + 1; });
+    const prio = { faded: 0, def: 1, cand: 2, tree: 3, neg: 4, block: 5, upd: 6, scan: 7 };
+    const list = S.edges.map((e) => ({ e, cls: view.edge[key(e[0], e[1])] || "def" }))
+      .sort((a, b) => prio[a.cls] - prio[b.cls]);
+    let s = `<svg viewBox="0 0 ${Wd.toFixed(0)} ${Ht.toFixed(0)}" role="img" aria-label="${esc(view.label)}"><defs>`;
+    for (const a of ARROWS) s += `<marker id="${pfx}-${a}" class="ah ${a}" viewBox="0 0 10 10" refX="9.2" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0.6 L10,5 L0,9.4 z"/></marker>`;
+    s += "</defs>";
+    for (const { e, cls } of list) {
+      const [u, v, w] = e;
+      const [x1, y1] = P[u], [x2, y2] = P[v];
+      const curved = eset.has(key(v, u));
+      let path, lx, ly;
+      if (!curved) {
+        const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+        const sx = x1 + ux * (R + 1), sy = y1 + uy * (R + 1), ex = x2 - ux * (R + 2), ey = y2 - uy * (R + 2);
+        path = `M${sx.toFixed(1)},${sy.toFixed(1)} L${ex.toFixed(1)},${ey.toFixed(1)}`;
+        lx = (x1 + x2) / 2; ly = (y1 + y2) / 2;
+      } else {
+        const rad = 0.3, mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1;
+        const cx = mx + rad * dy, cy = my - rad * dx;
+        const a1 = Math.atan2(cy - y1, cx - x1), a2 = Math.atan2(y2 - cy, x2 - cx);
+        const sx = x1 + Math.cos(a1) * (R + 1), sy = y1 + Math.sin(a1) * (R + 1);
+        const ex = x2 - Math.cos(a2) * (R + 2), ey = y2 - Math.sin(a2) * (R + 2);
+        path = `M${sx.toFixed(1)},${sy.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`;
+        lx = 0.25 * x1 + 0.5 * cx + 0.25 * x2; ly = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
+      }
+      const wtxt = fmt(w);
+      const eid = view.ids ? `e${idx[key(u, v)]}` : "";
+      const chars = wtxt.length + (eid ? eid.length * 0.85 + 0.6 : 0);
+      const bw = (chars * 8.2 + 10) * k, bh = 19 * k;
+      s += `<g class="e ${cls}"><path d="${path}" marker-end="url(#${pfx}-${cls})"/>`;
+      s += `<g class="lbl"><rect x="${(lx - bw / 2).toFixed(1)}" y="${(ly - bh / 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="5"/>`;
+      s += `<text x="${lx.toFixed(1)}" y="${(ly + 4.6 * k).toFixed(1)}" text-anchor="middle" style="font-size:${(13 * k).toFixed(1)}px">${eid ? `<tspan class="eid">${eid}</tspan><tspan dx="3"> </tspan>` : ""}<tspan class="wv${w < 0 ? " negw" : ""}">${wtxt}</tspan></text></g></g>`;
+    }
+    const midY = (minY + maxY) / 2;
+    for (let v = 1; v <= n; v++) {
+      const [x, y] = P[v];
+      const cls = view.node[v] || "";
+      s += `<g class="n ${cls}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R}"/><text x="${x.toFixed(1)}" y="${(y + 5.2 * k).toFixed(1)}" text-anchor="middle" style="font-size:${(15 * k).toFixed(1)}px">v${v}</text></g>`;
+      const b = view.badge[v];
+      if (b) {
+        const above = !flat && d.pos[v][1] > midY + 1e-9;
+        const by = above ? y - R - 18 * k : y + R + 18 * k;
+        const bw = Math.max(26, b.t.length * 8.4 + 12) * k, bh = 22 * k;
+        s += `<g class="bdg${b.hi ? " hi" : ""}"><rect x="${(x - bw / 2).toFixed(1)}" y="${(by - bh / 2).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="6"/><text x="${x.toFixed(1)}" y="${(by + 4.6 * k).toFixed(1)}" text-anchor="middle" style="font-size:${(13 * k).toFixed(1)}px">${esc(b.t)}</text></g>`;
+      }
+    }
+    return s + "</svg>";
+  }
+
+  // ───────── Dijkstra 화면 ─────────
+  function djView(st) {
+    const n = SCEN[S.sc].n, node = {}, badge = {}, edge = {};
+    for (let v = 1; v <= n; v++) node[v] = st.inY[v] ? "conf" : "";
+    if (st.phase === "select" || st.phase === "update") node[st.vnear] = "cur";
+    const upd = {};
+    if (st.phase === "update") st.updates.forEach((x) => { upd[x.i] = x; });
+    for (let v = 1; v <= n; v++) {
+      if (st.inY[v]) badge[v] = { t: fmt(st.final[v]) };
+      else if (upd[v]) badge[v] = { t: `${fmt(upd[v].old)}→${fmt(upd[v].neu)}`, hi: true };
+      else badge[v] = { t: fmt(st.length[v]) };
+    }
+    st.F.forEach(([u, v]) => { edge[key(u, v)] = "tree"; });
+    for (let v = 2; v <= n; v++) if (!st.inY[v] && st.length[v] !== INF && st.touch[v]) edge[key(st.touch[v], v)] = edge[key(st.touch[v], v)] || "cand";
+    if (st.phase === "update") {
+      st.updates.forEach((x) => { edge[key(st.vnear, x.i)] = "upd"; });
+      st.blocked.forEach((x) => { edge[key(st.vnear, x.i)] = "block"; });
+    }
+    return { node, badge, edge, ids: false, label: `Dijkstra ${st.title}` };
+  }
+
+  function renderDJ() {
+    const run = S.dj.run, st = run.steps[S.dj.i], n = SCEN[S.sc].n;
+    $("djTitle").textContent = st.title;
+    $("djCounter").textContent = `비교 ${st.comps} / ${run.total}번`;
+    $("djGraph").innerHTML = graphSVG("dj", djView(st));
+    // 확정 순서
+    let strip = '<span class="lab">확정 순서</span>';
+    st.order.forEach((v, k) => {
+      const cur = (st.phase === "select" || st.phase === "update") && v === st.vnear;
+      strip += (k ? '<span class="arrow">→</span>' : "") + `<span class="chip ${cur ? "cur" : "conf"}">v${v} (${fmt(st.final[v])})</span>`;
+    });
+    for (let k = st.order.length; k < n; k++) strip += '<span class="arrow">→</span><span class="chip">?</span>';
+    $("djStrip").innerHTML = strip;
+    // 표
+    let h = "<tr><th>i</th>";
+    for (let v = 1; v <= n; v++) h += `<th>v${v}</th>`;
+    let tr1 = "<tr><th>touch[i]</th>", tr2 = "<tr><th>length[i]</th>";
+    const upd = {};
+    if (st.phase === "update") st.updates.forEach((x) => { upd[x.i] = x; });
+    for (let v = 1; v <= n; v++) {
+      if (v === 1) { tr1 += '<td class="mut">–</td>'; tr2 += '<td class="conf">0</td>'; continue; }
+      let c = "", txt = fmt(st.length[v]);
+      if (st.inY[v]) { c = ((st.phase === "select" || st.phase === "update") && v === st.vnear) ? "cur" : "conf"; txt = fmt(st.final[v]); }
+      else if (upd[v]) { c = "upd"; txt = `${fmt(upd[v].old)} → ${fmt(upd[v].neu)}`; }
+      tr1 += `<td class="${upd[v] ? "upd" : c}">${st.touch[v]}</td>`;
+      tr2 += `<td class="${c}">${txt}</td>`;
+    }
+    $("djTable").innerHTML = h + "</tr>" + tr1 + "</tr>" + tr2 + "</tr>";
+    $("djWhat").textContent = st.what;
+    $("djWhy").textContent = st.why;
+    renderPlayer("dj");
+  }
+
+  // ───────── Bellman-Ford 화면 ─────────
+  function bfView(st) {
+    const n = SCEN[S.sc].n, node = {}, badge = {}, edge = {};
+    const changed = new Set(st.changed || []);
+    for (let v = 1; v <= n; v++) node[v] = changed.has(v) ? "upd" : "";
+    node[1] = "src";
+    for (let v = 1; v <= n; v++) {
+      if (changed.has(v) && st.before) badge[v] = { t: `${fmt(st.before[v])}→${fmt(st.length[v])}`, hi: true };
+      else badge[v] = { t: fmt(st.length[v]) };
+    }
+    for (let v = 2; v <= n; v++) if (st.touch[v]) edge[key(st.touch[v], v)] = "tree";
+    (st.status || []).forEach((r, j) => { if (r === "upd") { const e = S.edges[j]; edge[key(e[0], e[1])] = "upd"; } });
+    if ((st.phase === "relax" || st.phase === "check") && st.edge) {
+      const k2 = key(st.edge[0], st.edge[1]);
+      edge[k2] = st.res === "upd" ? "upd" : st.res === "neg" ? "neg" : "scan";
+      if (st.res === "neg") node[st.edge[1]] = "neg";
+    }
+    return { node, badge, edge, ids: true, label: `Bellman-Ford ${st.title}` };
+  }
+
+  function renderBF() {
+    const run = S.bf.run, st = run.steps[S.bf.i], n = SCEN[S.sc].n, m = S.edges.length;
+    $("bfTitle").textContent = st.title;
+    const total = run.checks;
+    $("bfCounter").textContent = `완화 검사 ${st.checks} / ${total}번`;
+    $("bfGraph").innerHTML = graphSVG("bf", bfView(st));
+    // 간선 칩
+    let lab = "간선 순서";
+    if (st.phase === "check" || (st.phase === "result" && !run.stopped)) lab = "검사 라운드";
+    else if (st.phase === "result" && run.stopped) lab = `${run.stopped}라운드 (변화 없음)`;
+    else if (st.k) lab = `${st.k}라운드`;
+    let strip = `<span class="lab">${lab}</span>`;
+    S.edges.forEach((e, j) => {
+      const r = (st.status || [])[j] || "pending";
+      let c = { upd: "upd", same: "same", skip: "skip", neg: "negc", pending: "" }[r];
+      if ((st.phase === "relax" || st.phase === "check") && st.j === j) c += " now";
+      strip += `<span class="chip ${c}" title="v${e[0]}→v${e[1]} (${fmt(e[2])})">e${j + 1}</span>`;
+    });
+    $("bfStrip").innerHTML = strip;
+    // 표
+    let h = "<tr><th>i</th>";
+    for (let v = 1; v <= n; v++) h += `<th>v${v}</th>`;
+    let tr1 = "<tr><th>touch[i]</th>", tr2 = "<tr><th>length[i]</th>";
+    const changed = new Set(st.changed || []);
+    const scanV = (st.phase === "relax" || st.phase === "check") && st.edge ? st.edge[1] : -1;
+    for (let v = 1; v <= n; v++) {
+      let c = changed.has(v) ? "upd" : "";
+      if (v === scanV) c = st.res === "upd" ? "upd" : st.res === "neg" ? "neg" : "scan";
+      const txt = changed.has(v) && st.before ? `${fmt(st.before[v])} → ${fmt(st.length[v])}` : fmt(st.length[v]);
+      tr1 += `<td class="${c}">${st.touch[v]}</td>`;
+      tr2 += `<td class="${c}">${txt}</td>`;
+    }
+    $("bfTable").innerHTML = h + "</tr>" + tr1 + "</tr>" + tr2 + "</tr>";
+    $("bfWhat").textContent = st.what;
+    $("bfWhy").textContent = st.why;
+    // 라운드 기록
+    let rh = "<tr><th>라운드</th>";
+    for (let v = 1; v <= n; v++) rh += `<th>v${v}</th>`;
+    rh += "</tr>";
+    st.rows.forEach((row, k) => {
+      rh += `<tr><th>${k}</th>`;
+      for (let v = 1; v <= n; v++) {
+        const ch = k > 0 && row[v] !== st.rows[k - 1][v];
+        rh += `<td class="${ch ? "upd" : ""}">${fmt(row[v])}</td>`;
+      }
+      rh += "</tr>";
+    });
+    $("bfRows").innerHTML = rh;
+    renderPlayer("bf");
+  }
+
+  // ───────── 비교 / 간선 목록 ─────────
+  function renderCompare() {
+    const dj = S.dj.run, bf = S.bf.run, dst = dj.steps[S.dj.i], bst = bf.steps[S.bf.i], n = SCEN[S.sc].n;
+    const scale = Math.max(dj.total, bf.checks);
+    $("mD").style.width = (100 * dst.comps / scale) + "%";
+    $("mB").style.width = (100 * bst.checks / scale) + "%";
+    $("mDn").textContent = `${dst.comps} / ${dj.total}`;
+    $("mBn").textContent = `${bst.checks} / ${bf.checks}`;
+    const dDone = S.dj.i === dj.steps.length - 1, bDone = S.bf.i === bf.steps.length - 1;
+    if (!dDone || !bDone) {
+      $("resultBox").innerHTML = '<p class="note">두 알고리즘을 끝까지 실행하면 정점별 결과를 나란히 비교합니다. 막대는 지금까지의 단위 연산 횟수입니다.</p>';
+      return;
+    }
+    let t = "<div class=\"tablewrap\"><table><tr><th>정점</th><th>Dijkstra</th><th>Bellman-Ford</th><th>판정</th></tr>";
+    for (let v = 2; v <= n; v++) {
+      const a = dj.final[v], b = bf.final[v];
+      let verdict, ca = "", cb = "";
+      if (bf.neg) { verdict = "음수 사이클 → 정의 안 됨"; ca = "bad"; }
+      else if (a === b) { verdict = "같음"; ca = cb = "ok"; }
+      else { verdict = "Dijkstra 오답"; ca = "bad"; cb = "ok"; }
+      t += `<tr><td>v${v}</td><td class="${ca}">${a === null ? "?" : fmt(a)}</td><td class="${cb}">${bf.neg ? fmt(b) + "…" : fmt(b)}</td><td>${verdict}</td></tr>`;
+    }
+    t += "</table></div>";
+    let msg;
+    if (bf.neg) msg = "Bellman-Ford는 음수 사이클을 보고했고, Dijkstra는 이상을 알리지 못한 채 숫자를 내놓았습니다.";
+    else if ([...Array(n + 1).keys()].slice(2).every((v) => dj.final[v] === bf.final[v])) msg = "두 결과가 같습니다. Dijkstra는 정점을 한 번씩만 확정해서 끝냈고, Bellman-Ford는 모든 간선을 라운드마다 다시 봤습니다.";
+    else msg = "음수 간선 때문에 Dijkstra가 이미 확정한 값을 고치지 못해 틀렸습니다. Bellman-Ford는 확정하지 않고 끝까지 고쳐서 맞았습니다.";
+    $("resultBox").innerHTML = t + `<p class="note">${msg}</p>`;
+  }
+
+  function renderEdges() {
+    let h = "<tr><th>순서</th><th>간선</th><th>가중치</th><th>순서 바꾸기</th></tr>";
+    S.edges.forEach((e, j) => {
+      const id = `w-${e[0]}-${e[1]}`;
+      h += `<tr><td>e${j + 1}</td><td>v${e[0]} → v${e[1]}</td>` +
+        `<td><input type="number" id="${id}" step="1" min="-20" max="60" value="${e[2]}" class="${e[2] < 0 ? "negw" : ""}" aria-label="v${e[0]}에서 v${e[1]}로 가는 간선의 가중치"></td>` +
+        `<td><button type="button" class="mv" data-mv="${j}" data-d="-1" aria-label="e${j + 1}을 앞으로" ${j === 0 ? "disabled" : ""}>↑</button> ` +
+        `<button type="button" class="mv" data-mv="${j}" data-d="1" aria-label="e${j + 1}을 뒤로" ${j === S.edges.length - 1 ? "disabled" : ""}>↓</button></td></tr>`;
+    });
+    $("edgeTable").innerHTML = h;
+  }
+
+  // ───────── 재생 ─────────
+  const ICON = {
+    first: '<svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg>',
+    prev: '<svg viewBox="0 0 16 16"><path d="M12 2v12L4 8z"/></svg>',
+    play: '<svg viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg>',
+    pause: '<svg viewBox="0 0 16 16"><path d="M3 2h4v12H3zM9 2h4v12H9z"/></svg>',
+    next: '<svg viewBox="0 0 16 16"><path d="M4 2v12l8-6z"/></svg>',
+    last: '<svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>',
+  };
+  function renderPlayer(p) {
+    const box = document.querySelector(`.player[data-p="${p}"]`);
+    const run = S[p].run, i = S[p].i, last = run.steps.length - 1;
+    const playing = !!S[p].timer;
+    if (!box.dataset.built) {
+      box.innerHTML =
+        `<button type="button" class="ib" data-a="first" aria-label="처음 단계">${ICON.first}</button>` +
+        `<button type="button" class="ib" data-a="prev" aria-label="이전 단계">${ICON.prev}</button>` +
+        `<button type="button" class="ib play" data-a="play" aria-label="재생">${ICON.play}</button>` +
+        `<button type="button" class="ib" data-a="next" aria-label="다음 단계">${ICON.next}</button>` +
+        `<button type="button" class="ib" data-a="last" aria-label="마지막 단계">${ICON.last}</button>` +
+        `<input type="range" id="${p}Range" min="0" value="0" aria-label="단계 이동">` +
+        `<span class="pos" id="${p}Pos"></span>`;
+      box.dataset.built = "1";
+      box.addEventListener("click", (ev) => {
+        const b = ev.target.closest("button[data-a]");
+        if (!b) return;
+        const a = b.dataset.a;
+        if (a === "play") { S[p].timer ? stop(p) : start(p); return; }
+        stop(p);
+        const L = S[p].run.steps.length - 1;
+        S[p].i = a === "first" ? 0 : a === "last" ? L : a === "prev" ? Math.max(0, S[p].i - 1) : Math.min(L, S[p].i + 1);
+        renderAll();
+      });
+      $(`${p}Range`).addEventListener("input", (ev) => { stop(p); S[p].i = +ev.target.value; renderAll(); });
+    }
+    const r = $(`${p}Range`);
+    r.max = last; r.value = i;
+    $(`${p}Pos`).textContent = `${i} / ${last}`;
+    const pb = box.querySelector('[data-a="play"]');
+    pb.innerHTML = playing ? ICON.pause : ICON.play;
+    pb.setAttribute("aria-label", playing ? "멈춤" : "재생");
+  }
+  function start(p) {
+    stop(p);
+    if (S[p].i >= S[p].run.steps.length - 1) S[p].i = 0;
+    S[p].timer = setInterval(() => {
+      if (S[p].i >= S[p].run.steps.length - 1) { stop(p); renderAll(); return; }
+      S[p].i++; renderAll();
+    }, S.speed);
+    renderAll();
+  }
+  function stop(p) { if (S[p].timer) { clearInterval(S[p].timer); S[p].timer = null; } }
+  function renderAll() {
+    renderDJ(); renderBF(); renderCompare(); renderEdges();
+    $("playAll").textContent = (S.dj.timer || S.bf.timer) ? "멈춤" : "둘 다 재생";
+  }
+
+  // ───────── 범례 ─────────
+  const sw = (cls, kind) => kind === "line"
+    ? `<svg viewBox="0 0 26 14"><line x1="1" y1="7" x2="25" y2="7" style="stroke: var(--${cls}); stroke-width: 3.2; ${cls === "cand" || cls === "scan" ? "stroke-dasharray: 5 3;" : ""}"/></svg>`
+    : `<svg viewBox="0 0 26 14"><circle cx="13" cy="7" r="6" style="fill: var(--${cls}); stroke: var(--${cls});"/></svg>`;
+  $("legend").innerHTML =
+    `<span>${sw("conf")}확정된 정점 (Dijkstra)</span><span>${sw("cur")}이번에 고른 vnear</span><span>${sw("src")}출발점 v1</span>` +
+    `<span>${sw("tree", "line")}최단경로 간선</span><span>${sw("cand", "line")}후보 경로</span><span>${sw("upd", "line")}거리를 줄인 간선</span>` +
+    `<span>${sw("scan", "line")}지금 검사하는 간선</span><span>${sw("neg", "line")}확정이라 무시됨 / 음수 사이클</span>`;
+
+  // ───────── 이벤트 ─────────
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => loadScenario(b.dataset.sc)));
+  $("orderSel").addEventListener("change", (ev) => {
+    S.order = ev.target.value;
+    const d = SCEN[S.sc];
+    const weight = {};
+    S.edges.forEach((e) => { weight[key(e[0], e[1])] = e[2]; });
+    const base = S.order === "best" ? d.best : d.edges;
+    S.edges = base.map((e) => [e[0], e[1], weight[key(e[0], e[1])]]);
+    recompute(true);
+  });
+  $("earlyChk").addEventListener("change", (ev) => { S.early = ev.target.checked; recompute(true); });
+  $("speedSel").addEventListener("change", (ev) => {
+    S.speed = +ev.target.value;
+    ["dj", "bf"].forEach((p) => { if (S[p].timer) start(p); });
+  });
+  $("resetAll").addEventListener("click", () => { stop("dj"); stop("bf"); S.dj.i = 0; S.bf.i = 0; renderAll(); });
+  $("playAll").addEventListener("click", () => {
+    if (S.dj.timer || S.bf.timer) { stop("dj"); stop("bf"); renderAll(); return; }
+    if (S.dj.i >= S.dj.run.steps.length - 1 && S.bf.i >= S.bf.run.steps.length - 1) { S.dj.i = 0; S.bf.i = 0; }
+    start("dj"); start("bf");
+  });
+  $("restore").addEventListener("click", () => loadScenario(S.sc, true));
+  $("edgeTable").addEventListener("change", (ev) => {
+    const inp = ev.target.closest("input[type=number]");
+    if (!inp) return;
+    const [, u, v] = inp.id.split("-").map(Number);
+    let w = Math.round(Number(inp.value));
+    if (!Number.isFinite(w)) w = 0;
+    w = Math.max(-20, Math.min(60, w));
+    S.edges = S.edges.map((e) => (e[0] === u && e[1] === v ? [u, v, w] : e));
+    recompute(true);
+    const again = $(`w-${u}-${v}`);
+    if (again) again.focus();
+  });
+  $("edgeTable").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-mv]");
+    if (!b) return;
+    const j = +b.dataset.mv, dlt = +b.dataset.d, k = j + dlt;
+    if (k < 0 || k >= S.edges.length) return;
+    const arr = S.edges.slice();
+    [arr[j], arr[k]] = [arr[k], arr[j]];
+    S.edges = arr;
+    if (S.sc === "basic") { S.order = "custom"; $("orderSel").value = "custom"; }
+    recompute(true);
+    const again = document.querySelector(`button[data-mv="${k}"][data-d="${dlt}"]`);
+    if (again && !again.disabled) again.focus();
+  });
+  let rz = null, lastK = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => {
+      const k = window.matchMedia("(max-width: 600px)").matches;
+      if (k !== lastK) { lastK = k; renderAll(); }
+    }, 150);
+  });
+  window.addEventListener("hashchange", () => {
+    const h = location.hash.slice(1);
+    if (SCEN[h] && h !== S.sc) loadScenario(h, true);
+  });
+  // 보고서 캡처 등 외부 제어용
+  window.spViz = {
+    go(sc, dj, bf) { if (sc && sc !== S.sc) loadScenario(sc, true); if (dj != null) S.dj.i = Math.min(dj, S.dj.run.steps.length - 1); if (bf != null) S.bf.i = Math.min(bf, S.bf.run.steps.length - 1); renderAll(); },
+    order(o) { $("orderSel").value = o; $("orderSel").dispatchEvent(new Event("change")); },
+    early(on) { $("earlyChk").checked = on; $("earlyChk").dispatchEvent(new Event("change")); },
+    state() { return { sc: S.sc, dj: S.dj.i, djLast: S.dj.run.steps.length - 1, bf: S.bf.i, bfLast: S.bf.run.steps.length - 1 }; },
+  };
+  const h0 = location.hash.slice(1);
+  loadScenario(SCEN[h0] ? h0 : "basic", true);
+  renderLab();
+})();
+</script>
+
+</body>
+</html>
