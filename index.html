@@ -280,7 +280,7 @@ td.ok { color: var(--dj); font-weight: 600; } td.bad { background: var(--neg-sof
         <p><span class="pill why">왜</span><span id="bfWhy"></span></p>
       </div>
       <div class="rounds">
-        <h3>라운드가 끝날 때마다의 length (k행 = 간선 k개 이하까지 반영)</h3>
+        <h3>라운드가 끝날 때마다의 length (k행 = 적어도 간선 k개 이하까지 반영)</h3>
         <div class="tablewrap"><table id="bfRows"></table></div>
       </div>
       <div class="player" data-p="bf"></div>
@@ -340,6 +340,9 @@ const SP = (() => {
   const plus = (a, b) => `${fmt(a)} + ${b < 0 ? "(" + fmt(b) + ")" : fmt(b)}`;
   // v1(원)만 받침이 있다고 보고 조사를 고른다 (v2 투, v3 쓰리 …)
   const J = (i, pair) => { const [a, b] = pair.split("/"); return V(i) + (i === 1 ? a : b); };
+  // 숫자 뒤 조사 "(으)로": 끝자리가 0(영)·3(삼)·6(육)이면 받침이 있다
+  const RO = (x) => fmt(x) + (x !== INF && [0, 3, 6].includes(Math.abs(x) % 10) ? "으로" : "로");
+  const L = (i) => `length[${V(i)}]`;
 
   function buildW(n, edges) {
     const W = [];
@@ -372,7 +375,7 @@ const SP = (() => {
     }, o);
 
     const init = [];
-    for (let i = 2; i <= n; i++) init.push(`${V(i)} = ${fmt(length[i])}`);
+    for (let i = 2; i <= n; i++) init.push(`${L(i)} = ${fmt(length[i])}`);
     steps.push(snap({
       phase: "init", t: 0, title: "0단계 · 초기화", changed: [],
       what: `Y = {v1}에서 시작한다. 각 정점의 length를 v1에서 바로 가는 간선 길이로, touch를 1로 놓는다 (${init.join(", ")}).`,
@@ -410,7 +413,7 @@ const SP = (() => {
       else why = `가중치가 0 이상이므로, 아직 확정되지 않은 다른 정점을 거쳐 ${V(vnear)}에 오는 경로는 그 정점까지 이미 ${fmt(min)} 이상이라 더 짧아질 수 없다.`;
       steps.push(snap({
         phase: "select", t, vnear, edge: [u, vnear], cands, title: `${t}단계 · 선정: vnear = ${V(vnear)}`, changed: [],
-        what: `Y 밖 후보 ${candTxt} 중 length가 가장 작은 ${V(vnear)}(${fmt(min)})를 vnear로 고른다. ${J(vnear, '을/를')} 확정하고 간선 (${V(u)}, ${V(vnear)})를 F에 넣는다.`,
+        what: `Y 밖 정점의 length(${candTxt}) 중 가장 작은 ${V(vnear)}(${fmt(min)})를 vnear로 고른다. ${J(vnear, '을/를')} 확정하고 간선 (${V(u)}, ${V(vnear)})를 F에 넣는다.`,
         why,
       }));
 
@@ -431,8 +434,8 @@ const SP = (() => {
       }
       const parts = [];
       if (updates.length) parts.push(`${J(vnear, '을/를')} 거치는 경로로 고친다: ` +
-        updates.map((x) => `${V(x.i)} ${fmt(x.old)} → ${fmt(x.neu)} (${plus(final[vnear], x.w)})`).join(", ") + ".");
-      for (const b of blocked) parts.push(`${V(vnear)} → ${V(b.i)}로 가면 ${plus(final[vnear], b.w)} = ${fmt(b.cand)}로 ${V(b.i)}의 ${fmt(b.old)}보다 짧지만, ${J(b.i, '은/는')} 이미 확정되어 고치지 않는다.`);
+        updates.map((x) => `${L(x.i)} ${fmt(x.old)} → ${fmt(x.neu)} (${plus(final[vnear], x.w)})`).join(", ") + ".");
+      for (const b of blocked) parts.push(`${V(vnear)} → ${V(b.i)}로 가면 ${plus(final[vnear], b.w)} = ${RO(b.cand)} ${L(b.i)} = ${fmt(b.old)}보다 짧지만, ${J(b.i, '은/는')} 이미 확정되어 고치지 않는다.`);
       if (!updates.length && !blocked.length) {
         const out = edges.filter((e) => e[0] === vnear).length;
         parts.push(out ? `${J(vnear, '을/를')} 거쳐도 지금보다 짧아지는 정점이 없다.` : `${V(vnear)}에서 나가는 간선이 없어 고칠 값이 없다.`);
@@ -447,7 +450,7 @@ const SP = (() => {
       }));
     }
     const res = [];
-    for (let i = 2; i <= n; i++) res.push(`${V(i)} = ${final[i] === null ? "?" : fmt(final[i])}`);
+    for (let i = 2; i <= n; i++) res.push(`${L(i)} = ${final[i] === null ? "?" : fmt(final[i])}`);
     steps.push(snap({
       phase: "done", t: n, title: "끝 · 최단경로 트리 완성", changed: [],
       what: `n − 1 = ${n - 1}번 반복을 마쳤다. 결과: ${res.join(", ")}.`,
@@ -480,7 +483,7 @@ const SP = (() => {
         checks++;
         const [u, v, w] = edges[j];
         const lu = length[u], old = length[v];
-        let res, what, why = `${k}라운드: 모든 간선을 순서대로 완화한다. 이 라운드가 끝나면 간선 ${k}개 이하로 가는 최단거리가 반영된다.`;
+        let res, what, why = `${k}라운드: 모든 간선을 순서대로 완화한다. 이 라운드가 끝나면 적어도 간선 ${k}개 이하로 가는 최단거리는 반영된다.`;
         if (lu === INF) {
           res = "skip";
           what = `e${j + 1}: ${V(u)} → ${V(v)} (w = ${fmt(w)}). length[${V(u)}] = ∞라 이 간선으로는 아직 갈 수 없다 → 건너뜀.`;
@@ -498,7 +501,7 @@ const SP = (() => {
         }
         status[j] = res;
         steps.push(snap({
-          phase: "relax", k, j, res, title: `${k}라운드 · e${j + 1} 완화`, status: status.slice(),
+          phase: "relax", k, j, res, title: `${k}라운드 · e${j + 1} 검사`, status: status.slice(),
           before, changed: [...changed], edge: edges[j], what, why,
         }));
       }
@@ -506,8 +509,8 @@ const SP = (() => {
       const ch = [...changed].sort((a, b) => a - b);
       let what, why;
       if (ch.length) {
-        what = `${k}라운드 끝. 줄어든 값: ` + ch.map((v) => `${V(v)} ${fmt(before[v])} → ${fmt(length[v])}`).join(", ") + ".";
-        why = `간선 ${k}개 이하로 가는 경로가 모두 반영됐다. 라운드를 n − 1 = ${n - 1}번 하면 간선이 가장 많은 최단경로(${n - 1}개)까지 반영된다.`;
+        what = `${k}라운드 끝. 줄어든 값: ` + ch.map((v) => `${L(v)} ${fmt(before[v])} → ${fmt(length[v])}`).join(", ") + ".";
+        why = `적어도 간선 ${k}개 이하로 가는 경로는 모두 반영됐다 (배열을 덮어쓰기 때문에 더 긴 경로가 먼저 반영되기도 한다). 라운드를 n − 1 = ${n - 1}번 하면 간선이 가장 많은 최단경로(${n - 1}개)까지 반영된다.`;
       } else {
         what = `${k}라운드 끝. 이번 라운드에는 줄어든 값이 없다.`;
         why = earlyStop
@@ -528,8 +531,8 @@ const SP = (() => {
         if (lu === INF) { res = "skip"; what = `검사 e${j + 1}: length[${V(u)}] = ∞ → 건너뜀.`; }
         else if (lu + w < old) {
           res = "neg"; neg = true;
-          what = `검사 e${j + 1}: ${plus(lu, w)} = ${fmt(lu + w)} < length[${V(v)}] = ${fmt(old)} → 또 줄어든다!`;
-        } else { res = "same"; what = `검사 e${j + 1}: ${plus(lu, w)} = ${fmt(lu + w)} ≥ length[${V(v)}] = ${fmt(old)} → 그대로.`; }
+          what = `검사 e${j + 1}: length[${V(u)}] + w = ${plus(lu, w)} = ${fmt(lu + w)} < length[${V(v)}] = ${fmt(old)} → 또 줄어든다!`;
+        } else { res = "same"; what = `검사 e${j + 1}: length[${V(u)}] + w = ${plus(lu, w)} = ${fmt(lu + w)} ≥ length[${V(v)}] = ${fmt(old)} → 그대로.`; }
         status[j] = res;
         steps.push(snap({
           phase: "check", k: n, j, res, title: `음수 사이클 검사 · e${j + 1}`, status: status.slice(), changed: [], edge: edges[j],
@@ -538,7 +541,7 @@ const SP = (() => {
       }
     }
     const resTxt = [];
-    for (let i = 2; i <= n; i++) resTxt.push(`${V(i)} = ${fmt(length[i])}`);
+    for (let i = 2; i <= n; i++) resTxt.push(`${L(i)} = ${fmt(length[i])}`);
     const last = steps[steps.length - 1];
     if (neg) {
       steps.push(snap({
@@ -672,7 +675,7 @@ const SPX = (() => {
       name: "음수 간선", n: 4,
       pos: { 1: [0, 0.5], 2: [1.4, 1], 3: [1.4, 0], 4: [2.8, 1] },
       edges: [[2, 4, 3], [3, 2, -5], [1, 2, 2], [1, 3, 6]],
-      note: "<b>음수 간선</b> · v3 → v2가 −5입니다. Dijkstra는 v2를 2로 먼저 확정해 버려 틀린 답을 내고, Bellman-Ford는 정답(v2 = 1, v4 = 4)을 찾습니다.",
+      note: "<b>음수 간선</b> · v3 → v2가 −5입니다. Dijkstra는 v2를 거리 2로 먼저 확정해 버려 틀린 답을 내고, Bellman-Ford는 실제 최단거리(length[v2] = 1, length[v4] = 4)를 찾습니다.",
     },
     cycle: {
       name: "음수 사이클", n: 4,
